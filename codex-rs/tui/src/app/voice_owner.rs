@@ -5,6 +5,12 @@ use super::*;
 
 use crate::app_event::VoiceControl;
 
+#[derive(Clone, Copy)]
+pub(super) enum SideThreadNavigationPolicy {
+    Shutdown,
+    Preserve,
+}
+
 impl App {
     pub(super) fn voice_owner_thread_id(&self) -> Option<ThreadId> {
         self.background_voice
@@ -125,11 +131,54 @@ impl App {
         app_server: &mut AppServerSession,
         destination: Option<ThreadId>,
     ) {
-        self.shutdown_side_threads(app_server).await;
+        self.detach_current_thread_with_side_thread_policy(
+            app_server,
+            destination,
+            SideThreadNavigationPolicy::Shutdown,
+        )
+        .await;
+    }
+
+    pub(super) async fn detach_current_thread_for_session_switcher(
+        &mut self,
+        app_server: &mut AppServerSession,
+        destination: Option<ThreadId>,
+    ) {
+        self.detach_current_thread_with_side_thread_policy(
+            app_server,
+            destination,
+            SideThreadNavigationPolicy::Preserve,
+        )
+        .await;
+    }
+
+    async fn detach_current_thread_with_side_thread_policy(
+        &mut self,
+        app_server: &mut AppServerSession,
+        destination: Option<ThreadId>,
+        side_thread_policy: SideThreadNavigationPolicy,
+    ) {
+        if matches!(side_thread_policy, SideThreadNavigationPolicy::Shutdown) {
+            self.shutdown_side_threads(app_server).await;
+        }
+        let displayed_thread_id = self.current_displayed_thread_id();
+        let recent_session_thread_ids: std::collections::HashSet<_> = match side_thread_policy {
+            SideThreadNavigationPolicy::Shutdown => std::collections::HashSet::new(),
+            SideThreadNavigationPolicy::Preserve => self
+                .session_switcher
+                .recent_thread_ids()
+                .iter()
+                .copied()
+                .chain(displayed_thread_id)
+                .collect(),
+        };
         let thread_ids: Vec<_> = self.thread_event_channels.keys().copied().collect();
         for thread_id in thread_ids {
             if self.voice_owner_thread_id() == Some(thread_id)
                 || destination == Some(thread_id)
+                || recent_session_thread_ids.contains(&thread_id)
+                || (matches!(side_thread_policy, SideThreadNavigationPolicy::Preserve)
+                    && self.side_threads.contains_key(&thread_id))
                 || self
                     .agents_overview
                     .dispatched_requests

@@ -1,0 +1,17 @@
+---
+source: tui/src/session_switcher_tests.rs
+expression: "render_to_string(area, &buffer)"
+---
+┌ Sessions • F6 to return ─────────┐
+│＋  开 始 新 对 话                      │
+│● Summarizes work on the sidebar  │
+│Please check the latest layout    │
+│                                  │
+│A completed archived task         │
+│Review the final patch            │
+│  archived                        │
+│↑/↓ move enter select             │
+│                                  │
+│                                  │
+│                                  │
+└──────────────────────────────────┘

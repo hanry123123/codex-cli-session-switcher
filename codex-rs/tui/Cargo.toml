@@ -18,6 +18,9 @@ name = "codex_tui"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+session-switcher = []
+
 [lints]
 workspace = true
 

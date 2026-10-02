@@ -140,7 +140,7 @@ async fn offline_selection_reserves_keys_and_preserves_draft_and_backtrack_state
     app.reconnect.offline = true;
     for key in [
         KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL),
-        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
         KeyCode::Enter.into(),
         KeyCode::Right.into(),
         KeyCode::Left.into(),

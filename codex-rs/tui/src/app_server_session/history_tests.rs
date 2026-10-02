@@ -34,7 +34,7 @@ fn advancing_cursor_rejects_repeated_cursors() {
 }
 
 #[tokio::test]
-async fn owned_initial_history_stops_after_viewport_or_scan_budget() {
+async fn owned_initial_history_stops_after_one_viewport_or_scan_budget() {
     let codex_home = tempfile::tempdir().expect("temporary codex home");
     let mut config = ConfigBuilder::default()
         .codex_home(codex_home.path().to_path_buf())
@@ -55,12 +55,12 @@ async fn owned_initial_history_stops_after_viewport_or_scan_budget() {
     assert_eq!(
         [
             budget.next_page_size(/*rendered_rows*/ 0, /*scanned_items*/ 0),
-            budget.next_page_size(/*rendered_rows*/ 29, /*scanned_items*/ 10),
-            budget.next_page_size(/*rendered_rows*/ 30, /*scanned_items*/ 11),
+            budget.next_page_size(/*rendered_rows*/ 9, /*scanned_items*/ 10),
+            budget.next_page_size(/*rendered_rows*/ 10, /*scanned_items*/ 11),
             budget.next_page_size(/*rendered_rows*/ 0, /*scanned_items*/ 399),
             budget.next_page_size(/*rendered_rows*/ 0, /*scanned_items*/ 400),
         ],
-        [Some(30), Some(100), None, Some(1), None],
+        [Some(10), Some(100), None, Some(1), None],
     );
 
     let complete = HistoryLoadBudget::new(

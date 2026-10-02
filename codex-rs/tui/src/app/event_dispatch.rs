@@ -2737,6 +2737,107 @@ impl App {
                 self.select_agent_thread_and_discard_side(tui, app_server, thread_id)
                     .await?;
             }
+            AppEvent::SessionSwitcherSummaryUpdated { thread_id, summary } => {
+                if let Some(item) = self
+                    .session_switcher
+                    .items
+                    .iter_mut()
+                    .find(|item| item.thread.id == thread_id.to_string())
+                {
+                    item.summary = Some(summary);
+                    tui.frame_requester().schedule_frame();
+                }
+            }
+            AppEvent::SessionSwitcherThreadsLoaded { result } => {
+                self.session_switcher.loading = false;
+                match result {
+                    Ok(items) => {
+                        let selected = if self.session_switcher.new_session_selected {
+                            None
+                        } else {
+                            self.session_switcher
+                                .selected_thread_id()
+                                .or_else(|| self.current_displayed_thread_id())
+                        };
+                        self.session_switcher.reset_last_request_results();
+                        self.session_switcher.items = items;
+                        self.session_switcher.preserve_selection(selected);
+                        if !self.session_switcher.has_recent_threads()
+                            && let Some(thread_id) = self.current_displayed_thread_id()
+                        {
+                            self.session_switcher
+                                .note_thread_switch(/*previous*/ None, thread_id);
+                        }
+                        self.load_selected_last_request(app_server);
+                        self.start_session_summaries(app_server);
+                    }
+                    Err(error) => self.session_switcher.error = Some(error),
+                }
+                tui.frame_requester().schedule_frame();
+            }
+            AppEvent::SessionSwitcherLastRequestUpdated {
+                thread_id,
+                request,
+                loaded,
+            } => {
+                self.session_switcher.finish_last_request_load(thread_id);
+                if loaded {
+                    self.session_switcher.mark_last_request_loaded(thread_id);
+                }
+                if let Some(item) = self
+                    .session_switcher
+                    .items
+                    .iter_mut()
+                    .find(|item| item.thread.id == thread_id.to_string())
+                {
+                    item.last_user_request = request;
+                    tui.frame_requester().schedule_frame();
+                }
+            }
+            AppEvent::SessionSwitcherThreadCompleted { thread_id } => {
+                let known = self
+                    .session_switcher
+                    .items
+                    .iter()
+                    .any(|item| item.thread.id == thread_id.to_string());
+                let summary_job_was_running = self.session_switcher.summaries_loading;
+                if !known
+                    && (self.current_displayed_thread_id() == Some(thread_id)
+                        || self.primary_thread_id == Some(thread_id))
+                {
+                    self.refresh_session_switcher(app_server);
+                }
+                let item_exists = self
+                    .session_switcher
+                    .items
+                    .iter()
+                    .any(|item| item.thread.id == thread_id.to_string());
+                if let Some(item) = self
+                    .session_switcher
+                    .items
+                    .iter_mut()
+                    .find(|item| item.thread.id == thread_id.to_string())
+                {
+                    item.thread.status = codex_app_server_protocol::ThreadStatus::Idle;
+                    item.last_user_request = None;
+                }
+                if item_exists {
+                    self.session_switcher.invalidate_last_request(thread_id);
+                    self.start_last_request_load(app_server, thread_id);
+                    if self.chat_widget.has_chatgpt_account()
+                        && (known || summary_job_was_running)
+                    {
+                        self.session_switcher.queue_summary_update(thread_id);
+                        self.start_pending_session_summaries(app_server);
+                    }
+                }
+                tui.frame_requester().schedule_frame();
+            }
+            AppEvent::SessionSwitcherSummariesFinished => {
+                self.session_switcher.summaries_loading = false;
+                self.start_pending_session_summaries(app_server);
+                tui.frame_requester().schedule_frame();
+            }
             AppEvent::StartSide {
                 parent_thread_id,
                 user_message,

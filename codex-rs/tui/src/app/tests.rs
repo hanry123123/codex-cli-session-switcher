@@ -99,6 +99,7 @@ mod user_verification_routes;
 #[path = "tests/worktree_background_terminals_tests.rs"]
 mod worktree_background_terminals_tests;
 
+use super::voice_owner::SideThreadNavigationPolicy;
 use super::*;
 use crate::app_backtrack::BacktrackSelection;
 use crate::app_backtrack::BacktrackState;
@@ -877,6 +878,113 @@ async fn reset_thread_event_state_aborts_listener_tasks() {
         .await
         .expect("timed out waiting for listener task abort")
         .expect("listener task drop notification should succeed");
+}
+
+#[tokio::test]
+async fn session_switcher_reset_preserves_side_thread_listener_tasks_and_channels() {
+    struct NotifyOnDrop(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for NotifyOnDrop {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    async fn listener_task() -> (
+        tokio::task::JoinHandle<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    ) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _notify_on_drop = NotifyOnDrop(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.await.expect("listener should start");
+        (handle, dropped_rx)
+    }
+
+    let mut app = make_test_app().await;
+    let side_thread_id = ThreadId::new();
+    let other_thread_id = ThreadId::new();
+    app.side_threads
+        .insert(side_thread_id, SideThreadState::new(ThreadId::new()));
+    app.thread_event_channels
+        .insert(side_thread_id, ThreadEventChannel::new(8));
+    app.thread_event_channels
+        .insert(other_thread_id, ThreadEventChannel::new(8));
+    let (side_listener, mut side_dropped) = listener_task().await;
+    let (other_listener, other_dropped) = listener_task().await;
+    app.thread_event_listener_tasks
+        .insert(side_thread_id, side_listener);
+    app.thread_event_listener_tasks
+        .insert(other_thread_id, other_listener);
+
+    app.reset_thread_event_state_with_side_thread_policy(SideThreadNavigationPolicy::Preserve)
+        .await;
+
+    assert!(app.side_threads.contains_key(&side_thread_id));
+    assert!(app.thread_event_channels.contains_key(&side_thread_id));
+    assert!(
+        app.thread_event_listener_tasks
+            .contains_key(&side_thread_id)
+    );
+    assert!(!app.thread_event_listener_tasks[&side_thread_id].is_finished());
+    assert!(!app.thread_event_channels.contains_key(&other_thread_id));
+    assert!(
+        !app.thread_event_listener_tasks
+            .contains_key(&other_thread_id)
+    );
+    time::timeout(Duration::from_secs(1), other_dropped)
+        .await
+        .expect("unrelated listener should be aborted")
+        .expect("unrelated listener drop should be reported");
+    app.abort_thread_event_listener(side_thread_id);
+    time::timeout(Duration::from_secs(1), &mut side_dropped)
+        .await
+        .expect("side listener cleanup should finish")
+        .expect("side listener drop should be reported");
+}
+
+#[tokio::test]
+async fn session_switcher_reset_keeps_recent_primary_channels_and_buffers_notifications()
+-> Result<()> {
+    let mut app = make_test_app().await;
+    let current_thread_id = ThreadId::new();
+    let previous_thread_id = ThreadId::new();
+    let unrelated_thread_id = ThreadId::new();
+    app.session_switcher
+        .note_thread_switch(/*previous*/ None, previous_thread_id);
+    app.session_switcher
+        .note_thread_switch(Some(previous_thread_id), current_thread_id);
+    app.active_thread_id = Some(current_thread_id);
+    for thread_id in [current_thread_id, previous_thread_id, unrelated_thread_id] {
+        app.thread_event_channels
+            .insert(thread_id, ThreadEventChannel::new(/*capacity*/ 8));
+    }
+
+    app.reset_thread_event_state_with_side_thread_policy(SideThreadNavigationPolicy::Preserve)
+        .await;
+
+    assert!(app.thread_event_channels.contains_key(&current_thread_id));
+    assert!(app.thread_event_channels.contains_key(&previous_thread_id));
+    assert!(!app.thread_event_channels.contains_key(&unrelated_thread_id));
+    app.enqueue_thread_notification(
+        current_thread_id,
+        turn_started_notification(current_thread_id, "turn-1"),
+    )
+    .await?;
+
+    let store = app.thread_event_channels[&current_thread_id]
+        .store
+        .lock()
+        .await;
+    assert_eq!(store.active_turn_id(), Some("turn-1"));
+    assert_eq!(store.snapshot().events.len(), 1);
+    Ok(())
 }
 
 #[tokio::test]
@@ -5994,6 +6102,7 @@ async fn make_test_app() -> Box<App> {
         session_telemetry,
         app_event_tx,
         chat_widget,
+        session_switcher: Default::default(),
         workspace_command_runner: None,
         launch_cwd: config.cwd.to_path_buf(),
         runtime_working_directory_override: None,
@@ -6100,6 +6209,7 @@ pub(super) async fn make_test_app_with_channels() -> (
             session_telemetry,
             app_event_tx,
             chat_widget,
+            session_switcher: Default::default(),
             workspace_command_runner: None,
             launch_cwd: config.cwd.to_path_buf(),
             runtime_working_directory_override: None,

@@ -56,10 +56,10 @@ impl HistoryLoadBudget {
         if scope == HistoryHydrationScope::Initial
             && transcript_mode.is_some_and(crate::transcript_mode::TranscriptMode::is_owned)
         {
-            // A few screenfuls cover the first viewport and nearby reading without coupling
+            // One screenful covers the initial viewport without coupling
             // owned history to terminal scrollback settings, including unlimited scrollback.
             return Self {
-                rows: Some(usize::from(terminal_height.max(/*other*/ 1)) * 3),
+                rows: Some(usize::from(terminal_height.max(/*other*/ 1))),
                 items: Some(HISTORY_ITEM_SCAN_LIMIT),
             };
         }

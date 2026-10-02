@@ -1,5 +1,6 @@
 //! In-app session picker transitions, preserving per-thread input and the view on cancellation.
 
+use super::voice_owner::SideThreadNavigationPolicy;
 use super::*;
 use crate::chatwidget::ThreadInputStateRestoreMode;
 
@@ -77,6 +78,37 @@ impl App {
         app_server: &mut AppServerSession,
         selection: SessionSelection,
     ) -> Result<AppRunControl> {
+        self.apply_resume_picker_selection_with_side_thread_policy(
+            tui,
+            app_server,
+            selection,
+            SideThreadNavigationPolicy::Shutdown,
+        )
+        .await
+    }
+
+    pub(super) async fn apply_resume_picker_selection_from_switcher(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        selection: SessionSelection,
+    ) -> Result<AppRunControl> {
+        self.apply_resume_picker_selection_with_side_thread_policy(
+            tui,
+            app_server,
+            selection,
+            SideThreadNavigationPolicy::Preserve,
+        )
+        .await
+    }
+
+    async fn apply_resume_picker_selection_with_side_thread_policy(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        selection: SessionSelection,
+        side_thread_policy: SideThreadNavigationPolicy,
+    ) -> Result<AppRunControl> {
         match selection {
             SessionSelection::Resume(target_session) => {
                 let thread_id = target_session.thread_id;
@@ -96,7 +128,12 @@ impl App {
                     }
                 }
                 if let AppRunControl::Exit(reason) = self
-                    .resume_target_session(tui, app_server, target_session)
+                    .resume_target_session_with_side_thread_policy(
+                        tui,
+                        app_server,
+                        target_session,
+                        side_thread_policy,
+                    )
                     .await?
                 {
                     return Ok(AppRunControl::Exit(reason));

@@ -110,7 +110,7 @@ fn copying_from_find_preserves_the_query_above_selection_feedback() {
     let footer = TranscriptFooter {
         text: vec![
             Line::from("Find: needle"),
-            Line::from("Ctrl+C copy · Esc clear selection"),
+            Line::from("⌘C copy · Esc clear selection"),
         ]
         .into(),
         cursor_column: None,

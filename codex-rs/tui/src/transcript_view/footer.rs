@@ -50,7 +50,7 @@ impl TranscriptView {
                     first_fitting_line(
                         [
                             self.status_line_with_navigation(
-                                "ctrl+c copy · enter copy & follow · esc clear",
+                                "⌘C copy · enter copy & follow · esc clear",
                                 motion,
                             ),
                             selection_hint(width),
@@ -192,7 +192,7 @@ impl TranscriptView {
 fn selection_hint(width: u16) -> Line<'static> {
     first_fitting_line(
         [
-            "ctrl+c copy · enter copy & follow · esc clear",
+            "⌘C copy · enter copy & follow · esc clear",
             "enter copy & follow · esc clear",
             "enter copy+↓ · esc",
             "esc clear",

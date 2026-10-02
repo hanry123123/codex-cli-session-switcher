@@ -146,7 +146,7 @@ fn mouse_selection_preserves_header_reservation_at_turn_boundaries() {
                 );
                 assert_eq!(render(&mut view, &cells, width, height), selected);
                 let Some(ViewAction::Copy(copied)) = view.handle_key(
-                    KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+                    KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
                     &cells,
                 ) else {
                     panic!("copy selection at {width}x{height}");

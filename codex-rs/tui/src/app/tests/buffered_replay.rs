@@ -222,6 +222,95 @@ fn buffered_replay_keeps_unfinished_and_unrelated_deltas_in_order() {
 }
 
 #[test]
+fn read_only_snapshot_replays_missing_items_without_replaying_loaded_transcript() {
+    let thread_id = ThreadId::new();
+    let loaded_answer = ThreadItem::AgentMessage {
+        id: "answer".into(),
+        text: "Saved answer".into(),
+        phase: None,
+        memory_citation: None,
+        delivery: None,
+        questions: None,
+    };
+    let question = ItemCompletedNotification {
+        thread_id: thread_id.to_string(),
+        turn_id: "turn".into(),
+        completed_at_ms: 0,
+        item: ThreadItem::AgentMessage {
+            id: "answer".into(),
+            text: "Final **answer**".into(),
+            phase: None,
+            memory_citation: None,
+            delivery: None,
+            questions: Some(Vec::new()),
+        },
+    };
+    let mut snapshot = ThreadEventSnapshot {
+        session: None,
+        delegated_turns: Vec::new(),
+        turns: vec![test_turn(
+            "turn",
+            TurnStatus::Completed,
+            vec![loaded_answer],
+        )],
+        events: vec![
+            ThreadBufferedEvent::Notification(Box::new(completed(&thread_id.to_string()))),
+            ThreadBufferedEvent::Notification(Box::new(delta(
+                &thread_id.to_string(),
+                "turn",
+                "answer",
+            ))),
+            ThreadBufferedEvent::Notification(Box::new(delta(
+                &thread_id.to_string(),
+                "turn",
+                "new-answer",
+            ))),
+            ThreadBufferedEvent::Notification(Box::new(turn_started_notification(
+                thread_id, "turn",
+            ))),
+            ThreadBufferedEvent::Notification(Box::new(turn_completed_notification(
+                thread_id,
+                "turn",
+                TurnStatus::Completed,
+            ))),
+            ThreadBufferedEvent::Notification(Box::new(ServerNotification::ItemCompleted(
+                question.clone(),
+            ))),
+        ],
+        active_reasoning_item: None,
+        input_state: None,
+    };
+
+    replay_filter::omit_events_reflected_in_turns(&mut snapshot);
+
+    assert_eq!(snapshot.events.len(), 2);
+    assert!(matches!(
+        &snapshot.turns[0].items[0],
+        ThreadItem::AgentMessage { text, .. } if text == "Final **answer**"
+    ));
+    let mut notifications = snapshot.events.iter().filter_map(|event| match event {
+        ThreadBufferedEvent::Notification(notification) => Some(notification.as_ref()),
+        _ => None,
+    });
+    assert!(matches!(
+        notifications.next(),
+        Some(ServerNotification::AgentMessageDelta(notification))
+            if notification.item_id == "new-answer"
+    ));
+    let Some(ServerNotification::ItemCompleted(notification)) = notifications.next() else {
+        panic!("expected the pending question notification");
+    };
+    let ThreadItem::AgentMessage {
+        text, questions, ..
+    } = &notification.item
+    else {
+        panic!("expected an agent message with questions");
+    };
+    assert!(text.is_empty());
+    assert_eq!(questions, &Some(Vec::new()));
+}
+
+#[test]
 fn evicted_voice_delegation_marker_still_suppresses_private_replay() {
     let mut store = ThreadEventStore::new(/*capacity*/ 2);
     let voice_request = ThreadItem::UserMessage {
