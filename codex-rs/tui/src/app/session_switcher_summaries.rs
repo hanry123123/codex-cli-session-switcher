@@ -6,6 +6,7 @@ use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemsListCursor;
 use codex_app_server_protocol::ThreadItemsListParams;
 use codex_app_server_protocol::ThreadItemsListResponse;
 use codex_app_server_protocol::ThreadStatus;
@@ -187,7 +188,8 @@ async fn collect_summary_rounds(
             }
             return Ok(None);
         };
-        if cursor.as_deref() == Some(next_cursor.as_str()) {
+        let next_cursor = ThreadItemsListCursor::Opaque(next_cursor);
+        if cursor.as_ref() == Some(&next_cursor) {
             return Ok(None);
         }
         cursor = Some(next_cursor);

@@ -9,6 +9,7 @@ use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SortDirection;
+use codex_app_server_protocol::ThreadItemsListCursor;
 use codex_app_server_protocol::ThreadItemsListParams;
 use codex_app_server_protocol::ThreadItemsListResponse;
 use codex_app_server_protocol::ThreadListParams;
@@ -441,7 +442,8 @@ fn start_last_request_fetch(
                                 let Some(next_cursor) = page.next_cursor else {
                                     break;
                                 };
-                                if cursor.as_deref() == Some(next_cursor.as_str()) {
+                                let next_cursor = ThreadItemsListCursor::Opaque(next_cursor);
+                                if cursor.as_ref() == Some(&next_cursor) {
                                     break;
                                 }
                                 cursor = Some(next_cursor);
