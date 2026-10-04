@@ -76,6 +76,7 @@ use crate::render::renderable::Renderable;
 use crate::resume_picker::SessionSelection;
 use crate::resume_picker::SessionTarget;
 use crate::session_state::ThreadSessionState;
+use crate::session_switcher::SessionSwitcherState;
 use crate::startup_draft::StartupDraftPump;
 #[cfg(test)]
 use crate::test_support::PathBufExt;
@@ -256,6 +257,8 @@ mod safety_buffering;
 mod server_version_notice;
 mod session_lifecycle;
 mod session_picker;
+mod session_switcher;
+mod session_switcher_summaries;
 mod side;
 mod startup;
 mod startup_prompts;
@@ -528,6 +531,7 @@ pub(crate) struct App {
     pub(crate) session_telemetry: SessionTelemetry,
     pub(crate) app_event_tx: AppEventSender,
     pub(crate) chat_widget: ChatWidget,
+    pub(crate) session_switcher: SessionSwitcherState,
     workspace_command_runner: Option<WorkspaceCommandRunner>,
     /// Legacy bootstrap and server-setting inputs; local preferences live in `local_settings`.
     pub(crate) config: Config,
@@ -880,6 +884,9 @@ impl App {
             return Ok(AppRunControl::Exit(ExitReason::UserRequested));
         }
         let screen_size = tui.screen_size_for_event(&event)?;
+        if self.handle_session_switcher_mouse(tui, app_server, &event) {
+            return Ok(AppRunControl::Continue);
+        }
         if !matches!(
             &event,
             TuiEvent::Key(_) | TuiEvent::Mouse(_) | TuiEvent::Paste(_) | TuiEvent::FocusLost
@@ -1155,6 +1162,12 @@ impl App {
 
     fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui, screen_size: Size) -> Result<Rect> {
         self.sync_thread_title_progress();
+        if !self.session_switcher.has_recent_threads()
+            && let Some(thread_id) = self.current_displayed_thread_id()
+        {
+            self.session_switcher
+                .note_thread_switch(/*previous*/ None, thread_id);
+        }
         self.chat_widget
             .set_sparkle_terminal_focus(tui.is_terminal_focused());
         if tui.is_owned_screen() {

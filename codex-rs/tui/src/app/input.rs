@@ -352,6 +352,12 @@ impl App {
         if self.chat_widget.fork_in_progress {
             return;
         }
+        if self
+            .handle_session_switcher_key(tui, app_server, key_event)
+            .await
+        {
+            return;
+        }
         if self.chat_widget.is_external_writer_view()
             && self.overlay.is_none()
             && self.chat_widget.no_modal_or_popup_active()

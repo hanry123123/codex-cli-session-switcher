@@ -42,7 +42,7 @@ async fn selection_copy_cancels_a_pending_find_editor_chord() -> Result<()> {
         app.transcript_view
             .handle_key(KeyCode::Right.into(), &app.transcript_cells);
     }
-    let copy = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+    let copy = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER);
     assert_eq!(app.route_key_chord_event(&mut tui, copy), Some(copy));
     assert!(!app.key_chord_matcher.is_pending());
     assert_eq!(

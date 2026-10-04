@@ -135,10 +135,7 @@ impl TranscriptView {
             return true;
         }
         if self.selection.is_some() {
-            return (code == KeyCode::Char('c')
-                && matches!(modifiers, KeyModifiers::CONTROL | KeyModifiers::SUPER))
-                || (code == KeyCode::Char('c')
-                    && modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT))
+            if crate::text_selection::is_copy_key(key)
                 || code == KeyCode::Esc
                 || (code == KeyCode::Enter && modifiers == KeyModifiers::NONE)
                 || (matches!(modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
@@ -147,7 +144,10 @@ impl TranscriptView {
                         KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
                     ))
                 || (modifiers == KeyModifiers::NONE
-                    && matches!(code, KeyCode::PageUp | KeyCode::PageDown));
+                    && matches!(code, KeyCode::PageUp | KeyCode::PageDown))
+            {
+                return true;
+            }
         }
         self.is_search_active()
             && (matches!(code, KeyCode::Esc | KeyCode::Enter)

@@ -1151,6 +1151,16 @@ impl App {
         if self.abandoned_side_threads.contains(&thread_id) {
             return Ok(());
         }
+        if crate::session_switcher::is_session_switcher_enabled()
+            && matches!(
+                &notification,
+                ServerNotification::TurnCompleted(completed)
+                    if completed.turn.status == codex_app_server_protocol::TurnStatus::Completed
+            )
+        {
+            self.app_event_tx
+                .send(AppEvent::SessionSwitcherThreadCompleted { thread_id });
+        }
         if self.current_displayed_thread_id() == Some(thread_id)
             && let ServerNotification::TurnCompleted(notification) = &notification
         {

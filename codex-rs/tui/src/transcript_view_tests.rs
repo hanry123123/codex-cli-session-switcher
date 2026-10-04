@@ -851,7 +851,7 @@ fn selected_latest_content_keeps_new_activity_visible() {
     cells.push(cell("new output"));
     render(&mut view, &cells, /*width*/ 24, /*height*/ 3);
     assert!(!view.is_following());
-    insta::assert_snapshot!(view.status_line_with_navigation("Enter/Ctrl+C copy · Esc clear selection", crate::motion::MotionMode::Reduced).to_string(), @"New activity · Enter/Ctrl+C copy · Esc clear selection");
+    insta::assert_snapshot!(view.status_line_with_navigation("Enter/⌘C copy · Esc clear selection", crate::motion::MotionMode::Reduced).to_string(), @"New activity · Enter/⌘C copy · Esc clear selection");
 }
 
 #[test]

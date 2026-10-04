@@ -803,7 +803,7 @@ async fn owned_search_and_selection_consume_input_before_composer_and_backtrack(
         )?);
     }
     let copy = app.transcript_view.handle_key(
-        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
         &app.transcript_cells,
     );
     assert!(matches!(copy, Some(ViewAction::Copy(text)) if !text.is_empty()));

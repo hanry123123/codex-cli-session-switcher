@@ -214,7 +214,12 @@ impl App {
         }
 
         // Adopt actual launch ownership before constructing session-local preferences.
-        tui.prepare_owned_screen(config.tui_fullscreen_transcript)?;
+        // The custom session-switcher build needs an app-owned full-screen surface for the
+        // permanent left pane and right-hand Codex transcript.
+        tui.prepare_owned_screen(
+            config.tui_fullscreen_transcript
+                || crate::session_switcher::is_session_switcher_enabled(),
+        )?;
         let mut local_settings = crate::local_settings::LocalSettings::for_tui(&config, tui);
         let startup_started_at = Instant::now();
         let (app_event_tx, mut app_event_rx) = unbounded_channel();
@@ -781,6 +786,7 @@ See the Codex keymap documentation for supported actions and examples."
             session_telemetry: session_telemetry.clone(),
             app_event_tx,
             chat_widget,
+            session_switcher: Default::default(),
             workspace_command_runner: Some(workspace_command_runner),
             config,
             local_settings,
@@ -989,6 +995,10 @@ See the Codex keymap documentation for supported actions and examples."
                 &mut pending_startup_draft,
                 &mut pending_startup_submission,
             );
+        }
+
+        if crate::session_switcher::is_session_switcher_enabled() {
+            app.refresh_session_switcher(&mut app_server);
         }
 
         #[cfg(windows)]

@@ -69,6 +69,18 @@ impl App {
         tui: &mut tui::Tui,
         screen_size: Size,
     ) -> Result<Rect> {
+        let sidebar_width = if crate::session_switcher::is_session_switcher_enabled() {
+            crate::session_switcher::SessionSwitcherState::sidebar_width(screen_size.width)
+        } else {
+            0
+        };
+        let main_area = Rect::new(
+            sidebar_width,
+            /*y*/ 0,
+            screen_size.width.saturating_sub(sidebar_width),
+            screen_size.height,
+        );
+        let current_thread_id = self.current_displayed_thread_id();
         self.chat_widget.sync_warnings(&self.transcript_cells);
         let motion = MotionMode::from_animations_enabled(
             self.local_settings.tui.animations && self.local_settings.tui.effects.shimmer,
@@ -79,8 +91,8 @@ impl App {
         } else {
             "esc latest"
         };
-        self.sync_owned_transcript(screen_size.width);
-        let transcript_width = self.chat_widget.history_wrap_width(screen_size.width);
+        self.sync_owned_transcript(main_area.width);
+        let transcript_width = self.chat_widget.history_wrap_width(main_area.width);
         let composer_hint = self.composer_hint(transcript_width);
         let now = Instant::now();
         let turn_tip = self.turn_tip(transcript_width, now, &tui.frame_requester());
@@ -96,7 +108,52 @@ impl App {
             && !self.chat_widget.is_external_writer_view())
         .then(crate::bottom_pane::ComposerGap::default);
         let mut prompt_footer =
-            self.prompt_navigation_footer(screen_size.width.saturating_sub(/*rhs*/ 2));
+            self.prompt_navigation_footer(main_area.width.saturating_sub(/*rhs*/ 2));
+        let opening_preview = self
+            .chat_widget
+            .no_modal_or_popup_active()
+            .then_some(self.session_switcher.opening_thread_id)
+            .flatten()
+            .map(|thread_id| {
+                let item = self
+                    .session_switcher
+                    .items
+                    .iter()
+                    .find(|item| item.thread.id == thread_id.to_string());
+                let title = item
+                    .and_then(|item| {
+                        item.summary
+                            .as_deref()
+                            .filter(|summary| !summary.trim().is_empty())
+                            .or(item.thread.name.as_deref())
+                    })
+                    .unwrap_or("Untitled session")
+                    .to_string();
+                let mut lines = vec![ratatui::text::Line::styled(
+                    "Restoring session… input will be available when the latest screen is ready.",
+                    ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+                )];
+                if let Some(cells) = self.session_switcher.cached_thread_preview(thread_id) {
+                    lines.push(ratatui::text::Line::styled(
+                        "Cached conversation preview",
+                        ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
+                    ));
+                    for cell in cells {
+                        lines.extend(cell.display_lines(transcript_width));
+                    }
+                } else {
+                    if let Some(summary) = item.and_then(|item| item.summary.as_deref()) {
+                        lines.push(ratatui::text::Line::from(format!("Summary: {summary}")));
+                    }
+                    if let Some(request) = item.and_then(|item| item.last_user_request.as_deref()) {
+                        lines.push(ratatui::text::Line::from(format!(
+                            "Latest request: {request}"
+                        )));
+                    }
+                }
+                (title, lines)
+            });
+        let session_switcher = &self.session_switcher;
         let chat_widget = &self.chat_widget;
         let view = &mut self.transcript_view;
         let active_key = chat_widget.active_cell_transcript_key();
@@ -106,9 +163,9 @@ impl App {
             tui.frame_requester().schedule_frame();
         }
         let footer_area = crate::bottom_pane::inset_footer_hint_area(Rect::new(
-            /*x*/ 0,
+            main_area.x,
             /*y*/ 0,
-            screen_size.width,
+            main_area.width,
             /*height*/ 1,
         ));
         let footer = view.footer_with_navigation(footer_area.width, motion, latest_navigation);
@@ -129,15 +186,15 @@ impl App {
             screen_size.height
         } else {
             bottom
-                .desired_height(screen_size.width)
+                .desired_height(main_area.width)
                 .min(screen_size.height)
         };
         drop(bottom);
         let available = screen_size.height.saturating_sub(bottom_height);
         let mut bottom_area = Rect::new(
-            /*x*/ 0,
+            main_area.x,
             screen_size.height.saturating_sub(bottom_height),
-            screen_size.width,
+            main_area.width,
             bottom_height,
         );
         let mut rendered_cursor = None;
@@ -146,13 +203,23 @@ impl App {
         let mut blossom_tick = None;
         let mut transcript_bottom = available.saturating_sub(u16::from(composer_gap.is_none()));
         tui.draw(screen_size.height, |frame| {
+            session_switcher.render(
+                Rect::new(
+                    /*x*/ 0,
+                    /*y*/ 0,
+                    sidebar_width,
+                    screen_size.height,
+                ),
+                frame.buffer,
+                current_thread_id,
+            );
             ratatui::widgets::Clear.render(
-                Rect::new(/*x*/ 0, /*y*/ 0, screen_size.width, available),
+                Rect::new(main_area.x, /*y*/ 0, main_area.width, available),
                 frame.buffer,
             );
             let mut completion_tip_area = view.render_with_turn_tip_space(
                 Rect::new(
-                    /*x*/ 0,
+                    main_area.x,
                     /*y*/ 0,
                     transcript_width,
                     transcript_bottom,
@@ -193,13 +260,13 @@ impl App {
             );
             footer_height_changed = !dashboard_visible
                 && bottom
-                    .desired_height(screen_size.width)
+                    .desired_height(main_area.width)
                     .min(screen_size.height)
                     != bottom_height;
             if footer_height_changed && composer_gap.as_ref().is_some_and(|gap| gap.needs_separator)
             {
                 bottom_area.height = bottom
-                    .desired_height(screen_size.width)
+                    .desired_height(main_area.width)
                     .min(screen_size.height);
                 bottom_area.y = screen_size.height.saturating_sub(bottom_area.height);
                 // Resolve controls with the compact viewport first, then make room for
@@ -208,7 +275,7 @@ impl App {
                 transcript_bottom = bottom_area.y;
                 completion_tip_area = view.render_with_turn_tip_space(
                     Rect::new(
-                        /*x*/ 0,
+                        main_area.x,
                         /*y*/ 0,
                         transcript_width,
                         transcript_bottom,
@@ -243,7 +310,7 @@ impl App {
             } else {
                 (available > 0).then(|| {
                     Rect::new(
-                        /*x*/ 0,
+                        main_area.x,
                         available - 1,
                         transcript_width,
                         /*height*/ 1,
@@ -253,11 +320,32 @@ impl App {
             .filter(|_| chat_widget.no_modal_or_popup_active());
             feedback_tick =
                 view.render_composer_gap(follow_area, composer_hint.as_ref(), frame.buffer, now);
-            chat_widget.note_rendered_width(screen_size.width);
+            chat_widget.note_rendered_width(main_area.width);
             rendered_cursor = bottom.cursor_pos(bottom_area);
-            if let Some(position) = rendered_cursor {
+            if opening_preview.is_none()
+                && let Some(position) = rendered_cursor
+            {
                 frame.set_cursor_style(bottom.cursor_style(bottom_area));
                 frame.set_cursor_position(position);
+            }
+            if let Some((title, lines)) = &opening_preview {
+                ratatui::widgets::Clear.render(main_area, frame.buffer);
+                let block = ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .border_style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))
+                    .title(format!(" {title} • Loading "));
+                let paragraph = ratatui::widgets::Paragraph::new(lines.clone())
+                    .block(block)
+                    .wrap(ratatui::widgets::Wrap { trim: false });
+                let inner_height = usize::from(main_area.height.saturating_sub(2));
+                let scroll = paragraph
+                    .line_count(main_area.width.saturating_sub(2))
+                    .saturating_sub(inner_height);
+                let scroll = u16::try_from(scroll).unwrap_or(u16::MAX);
+                paragraph
+                    .scroll((scroll, 0))
+                    .render(main_area, frame.buffer);
+                rendered_cursor = None;
             }
         })?;
         if let Some((surface, tip)) = &turn_tip

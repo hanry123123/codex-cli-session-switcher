@@ -65,17 +65,7 @@ fn copy_shortcuts_clear_selection_only_after_confirmed_delivery() {
     ]))];
     for key in [
         KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
-        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
         KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
-        KeyEvent::new(
-            KeyCode::Char('c'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ),
-        KeyEvent::new(
-            KeyCode::Char('C'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ),
-        KeyEvent::new(KeyCode::Char('C'), KeyModifiers::CONTROL),
     ] {
         for status in [CopyStatus::Confirmed, CopyStatus::Unconfirmed] {
             for searching in [false, true] {
@@ -181,6 +171,50 @@ fn command_c_ignores_release_and_copies_only_an_active_selection() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn copy_key_terminal_variants_are_routed_to_selection() {
+    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(PlainHistoryCell::new(vec![
+        "selected café".into(),
+    ]))];
+    for (code, modifiers) in [
+        (KeyCode::Char('c'), KeyModifiers::SUPER),
+        (KeyCode::Char('c'), KeyModifiers::CONTROL),
+        (
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        ),
+        (KeyCode::Char('C'), KeyModifiers::CONTROL),
+    ] {
+        let mut view = TranscriptView::default();
+        render(&mut view, &cells, /*width*/ 24, /*height*/ 3);
+        view.begin_selection(&cells, /*column*/ 0, /*row*/ 0, /*clicks*/ 3);
+        let copy_key = KeyEvent::new(code, modifiers);
+        assert!(view.owns_interaction_key(copy_key));
+        assert!(matches!(
+            view.handle_key(copy_key, &cells),
+            Some(ViewAction::Copy(text)) if text == "selected café"
+        ));
+    }
+}
+
+#[test]
+fn control_c_still_cancels_find_without_a_selection() {
+    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(PlainHistoryCell::new(vec![
+        "selected café".into(),
+    ]))];
+    let mut view = TranscriptView::default();
+    render(&mut view, &cells, /*width*/ 24, /*height*/ 3);
+    view.begin_search();
+    let control_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+    assert!(view.owns_interaction_key(control_c));
+    assert!(matches!(
+        view.handle_key(control_c, &cells),
+        Some(ViewAction::Changed)
+    ));
+    assert!(!view.is_search_active());
 }
 
 #[test]
@@ -440,7 +474,7 @@ fn tool_selection_copies_its_displayed_revision_after_the_tool_commits() {
     );
     render(&mut view, &cells, /*width*/ 32, /*height*/ 8);
     let Some(ViewAction::Copy(copied)) = view.handle_key(
-        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
         &cells,
     ) else {
         panic!("copy action");

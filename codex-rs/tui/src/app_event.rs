@@ -57,6 +57,7 @@ use crate::chatwidget::ThreadUsageOutcome;
 use crate::chatwidget::UserMessage;
 use crate::experimental_features::FeatureWriteResult;
 use crate::goal_files::GoalDraft;
+use crate::session_switcher::SessionSwitcherItem;
 use codex_app_server_protocol::AskForApproval;
 use codex_config::types::ApprovalsReviewer;
 use codex_features::Feature;
@@ -373,6 +374,27 @@ pub(crate) enum AppEvent {
     },
     /// Switch the active thread to the selected agent.
     SelectAgentThread(ThreadId),
+    /// Update a sidebar row after its GPT-6 Luna summary is persisted.
+    SessionSwitcherSummaryUpdated {
+        thread_id: ThreadId,
+        summary: String,
+    },
+    /// Queue an incremental session summary after a completed model turn.
+    SessionSwitcherThreadCompleted {
+        thread_id: ThreadId,
+    },
+    /// Update the compact request preview for a session row.
+    SessionSwitcherLastRequestUpdated {
+        thread_id: ThreadId,
+        request: Option<String>,
+        loaded: bool,
+    },
+    /// Mark a background summary scan as complete.
+    SessionSwitcherSummariesFinished,
+    /// Replace the sidebar rows after its background session-list refresh finishes.
+    SessionSwitcherThreadsLoaded {
+        result: Result<Vec<SessionSwitcherItem>, String>,
+    },
 
     /// Fork the current thread into a transient side conversation.
     StartSide {

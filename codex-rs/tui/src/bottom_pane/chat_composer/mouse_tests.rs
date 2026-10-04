@@ -2,6 +2,9 @@
 
 use super::super::tests::new_test_composer;
 use super::*;
+use crate::tui::TuiEvent;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
 use crossterm::event::MouseButton::Left;
 use crossterm::event::MouseButton::Right;
 use crossterm::event::MouseEventKind::Down;
@@ -178,4 +181,40 @@ fn right_click_copy_uses_the_refreshed_editor_bounds() {
         Some(5)
     );
     assert_eq!(composer.draft.textarea.mouse_selection_range(), None);
+}
+
+#[test]
+fn copy_key_terminal_variants_copy_composer_selection() {
+    let (mut composer, _rx) = new_test_composer();
+    composer.insert_str("hello world");
+    let area = Rect::new(
+        /*x*/ 0, /*y*/ 0, /*width*/ 40, /*height*/ 4,
+    );
+    composer.render(area, &mut Buffer::empty(area));
+    let (x, y) = composer.cursor_pos(area).unwrap();
+    for (kind, column) in [
+        (Down(Left), x - 11),
+        (MouseEventKind::Drag(Left), x - 6),
+        (Up(Left), x - 6),
+    ] {
+        mouse(&mut composer, area, kind, column, y);
+    }
+
+    for (code, modifiers) in [
+        (KeyCode::Char('c'), KeyModifiers::SUPER),
+        (KeyCode::Char('c'), KeyModifiers::CONTROL),
+        (
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        ),
+        (KeyCode::Char('C'), KeyModifiers::CONTROL),
+    ] {
+        assert_eq!(
+            composer.copy_selection(&TuiEvent::Key(KeyEvent::new(code, modifiers)), |text| {
+                assert_eq!(text, "hello");
+                Ok(CopyStatus::Unconfirmed)
+            },),
+            Some((5, Ok(CopyStatus::Unconfirmed)))
+        );
+    }
 }
